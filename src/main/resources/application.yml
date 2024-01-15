@@ -1,0 +1,13 @@
+server:
+  port: ${SERVICE_PORT:8080}
+
+spring:
+  application:
+    name: ajustadoati-websocket
+
+openfire:
+  domain: {OPENFIRE_DOMAIN}
+  port: 5222
+  user: ${OPENFIRE_USER}
+  password: ${OPENFIRE_PASSWORD}
+
