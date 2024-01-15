@@ -1,0 +1,16 @@
+# Service - LoadBalancer
+# # pb-service -lb.yml
+apiVersion: v1
+kind: Service
+metadata:
+  name: websocket-service-service
+  labels:
+    app: websocket-service-app
+spec:
+  selector:
+    app: websocket-service-app
+  type: LoadBalancer
+  ports:
+  - nodePort: 32751
+    port: 8080
+    targetPort: 8080
