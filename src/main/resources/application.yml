@@ -6,8 +6,8 @@ spring:
     name: ajustadoati-websocket
 
 openfire:
-  domain: {OPENFIRE_DOMAIN}
+  domain: {OPENFIRE_DOMAIN:ajustadoati.com}
   port: 5222
-  user: ${OPENFIRE_USER}
-  password: ${OPENFIRE_PASSWORD}
+  user: ${OPENFIRE_USER:test}
+  password: ${OPENFIRE_PASSWORD:test}
 
