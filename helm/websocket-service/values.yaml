@@ -68,6 +68,6 @@ tolerations: []
 affinity: {}
 
 secrets:
-    name: websocket-secrets
-    openfireUserKey: openfire_user
-    openfirePasswordKey: openfire_password
+  name: websocket-secrets
+  openfireUserKey: openfire_user
+  openfirePasswordKey: openfire_password
