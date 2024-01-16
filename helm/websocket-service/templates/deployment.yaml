@@ -27,13 +27,13 @@ spec:
           - name: OPENFIRE_USER
             valueFrom:
               secretKeyRef:
-                name: "{ { .Values.secrets.name } }"
-                key: "{ { .Values.secrets.openfireUserKey } }"
+                name: "{{ .Values.secrets.name }}"
+                key: "{{ .Values.secrets.openfireUserKey }}"
           - name: OPENFIRE_PASSWORD
             valueFrom:
               secretKeyRef:
-                name: "{ { .Values.secrets.name } }"
-                key: "{ { .Values.secrets.openfirePasswordKey } }"
+                name: "{{ .Values.secrets.name }}"
+                key: "{{ .Values.secrets.openfirePasswordKey }}"
         resources:
           limits:
             cpu: '1'
