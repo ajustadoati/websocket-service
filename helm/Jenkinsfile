@@ -7,7 +7,7 @@ pipeline {
                         sh 'cp -R helm/* .'
 		        sh 'ls -ltr'
                         sh 'pwd'
-                        sh '/snap/bin/helm upgrade --install websocket-service websocket-service  --set image.repository=registry.hub.docker.com/ajustadoati/websocket-service --set image.tag=10'
+                        sh '/snap/bin/helm upgrade --install websocket-service websocket-service  --set image.repository=registry.hub.docker.com/ajustadoati/websocket-service --set image.tag=11'
 
             }
         }
