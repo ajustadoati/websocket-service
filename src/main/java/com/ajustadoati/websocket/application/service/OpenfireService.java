@@ -1,17 +1,21 @@
 package com.ajustadoati.websocket.application.service;
 
 import com.ajustadoati.websocket.application.service.dto.ResponseDto;
-import com.ajustadoati.websocket.config.properties.OpenfireProperties;
+import com.ajustadoati.websocket.config.XmppConnectionManager;
 import com.ajustadoati.websocket.domain.MessageWS;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.AllArgsConstructor;
+import jakarta.annotation.PostConstruct;
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.jivesoftware.smack.*;
+import org.jivesoftware.smack.chat2.Chat;
 import org.jivesoftware.smack.chat2.ChatManager;
 import org.jivesoftware.smack.chat2.IncomingChatMessageListener;
 import org.jivesoftware.smack.packet.Message;
 import org.jivesoftware.smack.tcp.XMPPTCPConnection;
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
+import org.jxmpp.jid.EntityBareJid;
 import org.jxmpp.jid.impl.JidCreate;
 import org.jxmpp.stringprep.XmppStringprepException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,139 +30,84 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.logging.Logger;
 
 @Data
-@AllArgsConstructor
+@RequiredArgsConstructor
 @Service
+@Slf4j
 public class OpenfireService {
-    private static AbstractXMPPConnection connection;
-    private final Logger log = Logger.getLogger(getClass().getName());
-    private ChatManager chatManager;
-    private OpenfireProperties openfireProperties;
-    private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
-    private static List<MessageWS> messages= new ArrayList<>();
+    private final XmppConnectionManager connectionManager;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
+    private final List<MessageWS> messages = new CopyOnWriteArrayList<>();
 
-    @Autowired
-    public OpenfireService(OpenfireProperties openfireProperties) {
-        log.info("init connection admin in opnefire");
-        this.openfireProperties = openfireProperties;
-        var configBuilder = XMPPTCPConnectionConfiguration.builder();
-        configBuilder.setUsernameAndPassword(openfireProperties.getUser(), openfireProperties.getPassword());
-        try {
-            configBuilder.setResource("Microservice client");
-            configBuilder.setHost(openfireProperties.getDomain());
-            configBuilder.setXmppDomain(openfireProperties.getDomain());
-            configBuilder.setSecurityMode(ConnectionConfiguration.SecurityMode.disabled);
-            configBuilder.setPort(Integer.parseInt(openfireProperties.getPort()));
-            SASLAuthentication.unBlacklistSASLMechanism("PLAIN");
-            SASLAuthentication.blacklistSASLMechanism("SCRAM-SHA-1");
-        } catch (XmppStringprepException e) {
-            e.printStackTrace();
-        }
-        connection = new XMPPTCPConnection(configBuilder.build());
-        // Connect to the server
-        try {
-            if (!connection.isConnected()) {
-                connection.connect();
-                connection.login();
-                chatManager = org.jivesoftware.smack.chat2.ChatManager.getInstanceFor(connection);
-                chatManager.addIncomingListener(getIncoming());
-            }
-        } catch (SmackException | IOException | XMPPException | InterruptedException e) {
-            e.printStackTrace();
-        }
+    @PostConstruct
+    public void init() {
+        connectionManager.getChatManager().addIncomingListener(this::handleIncomingMessage);
     }
 
-    public void processMessage(MessageWS messageWS) throws Exception{
+    public void processMessage(MessageWS messageWS) {
         messages.add(messageWS);
         sessions.add(messageWS.getSession());
+
         var users = messageWS.getUsers().split("&&");
-        for(String user : users){
-            log.info(">%s<".formatted(user));
-            //List<String> listDevicesForUser=Util.getDevicesForUser(dispositivos, user);
-            user=user+"@ajustadoati.com";
-            log.info("User: %s".formatted(user));
-            var jid = JidCreate.entityBareFrom(user);
-            var chat = getChatManager().chatWith(jid);
-            var outMessage= new Message();
-            outMessage.setBody(messageWS.getId()+"---"+messageWS.getMessage()+"---"+messageWS.getLatitude()+"---"+messageWS.getLongitude());
+
+        for (String user : users) {
             try {
+                var fullJid = JidCreate.entityBareFrom(user + "@ajustadoati.com");
+                var chat = connectionManager.getChatManager().chatWith(fullJid);
+                var outMessage = new Message();
+                outMessage.setBody(String.join("---",
+                    messageWS.getId().toString(),
+                    messageWS.getMessage(),
+                    String.valueOf(messageWS.getLatitude()),
+                    String.valueOf(messageWS.getLongitude())));
                 chat.send(outMessage);
-                /*if(listDevicesForUser!=null && listDevicesForUser.size()>0){
-                    Util.sendNotifications(listDevicesForUser, "Hola, Han realizado una solicitud: "+msj.getMensaje()+", con Id:"+msj.getId());
-                }*/
-            } catch (SmackException.NotConnectedException | InterruptedException e) {
-                e.printStackTrace();
+
+            } catch (Exception e) {
+                log.error("Error sending message to user {}", user, e);
             }
         }
     }
 
-    public MessageWS getMessageBySession(WebSocketSession session){
-        log.info("Searching message");
-        for (MessageWS messageWS : messages) {
-            if(messageWS.getSession().equals(session)){
-                log.info("session"+messageWS.getSession());
-                return messageWS;
+    private void handleIncomingMessage(EntityBareJid from, Message message, Chat chat) {
+        log.info("Received message from {}: {}", from, message.getBody());
+
+        String[] parts = message.getBody().split("&&");
+        if (parts.length < 2) return;
+
+        Long id = Long.parseLong(parts[0]);
+        String content = parts[1];
+
+        String username = from.toString().split("@")[0];
+
+        ResponseDto response = ResponseDto.builder()
+            .user(username)
+            .message(content)
+            .latitude(0.0)
+            .longitude(0.0)
+            .build();
+
+        try {
+            String json = objectMapper.writeValueAsString(response);
+            WebSocketSession targetSession = getSessionById(id);
+            if (targetSession != null && targetSession.isOpen()) {
+                targetSession.sendMessage(new TextMessage(json));
             }
+        } catch (IOException e) {
+            log.error("Error sending WebSocket message", e);
         }
-        return null;
     }
 
-    public void removeMessage(WebSocketSession session){
-        messages.remove(getMessageBySession(session));
-    }
-
-    public void removeSession(WebSocketSession session){
+    public void removeSession(WebSocketSession session) {
         sessions.remove(session);
+        messages.removeIf(m -> m.getSession().equals(session));
     }
 
-    private WebSocketSession getSessionById(Long id){
-        log.info("searching session%d".formatted(id));
-        for (MessageWS messageWS : messages) {
-            if(messageWS.getId().equals(id)){
-                log.info("session"+messageWS.getSession());
-                return messageWS.getSession();
-            }
-        }
-        return null;
-    }
-
-    private IncomingChatMessageListener getIncoming(){
-        return (from, message, chat) -> {
-            log.info("New message from " + from + ": " + message.getBody());
-            log.info("Received message from proveedor: " + message.getBody());
-            String[] codearr = message.getBody()
-                .split("&&");
-            Long id = 0L;
-            String texto = "";
-            if (codearr.length > 1) {
-                id = Long.valueOf(codearr[0]);
-                texto = codearr[1];
-            }
-
-            String[] arr = from.toString()
-                .split("@");
-            String us = arr[0];
-            var responseDto = ResponseDto.builder()
-                .message(texto)
-                .latitude(0.0)
-                .longitude(0.0)
-                .user(us)
-                .build();
-
-            try {
-                var response = objectMapper.writeValueAsString(responseDto);
-                synchronized (getSessions()) {
-                    for (WebSocketSession session : getSessions()) {
-                        if (session.equals(getSessionById(id))) {
-                            log.info("Sending response");
-                            session.sendMessage(new TextMessage(response));
-                        }
-                    }
-                }
-            } catch (IOException e1) {
-                e1.printStackTrace();
-            }
-        };
+    private WebSocketSession getSessionById(Long id) {
+        return messages.stream()
+            .filter(m -> m.getId().equals(id))
+            .map(MessageWS::getSession)
+            .findFirst()
+            .orElse(null);
     }
 
 }

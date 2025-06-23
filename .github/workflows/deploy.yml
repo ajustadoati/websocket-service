@@ -1,0 +1,68 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout el código
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # 2. Configura Java y Maven
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      # 3. Construye la aplicación
+      - name: Build Spring Boot App
+        run: mvn clean package -DskipTests
+
+      - name: Verificar archivo generado
+        run: ls -la target/
+
+      # 4. Construye la imagen Docker con variables inyectadas
+      - name: Build Docker Image
+        run: |
+          docker build --build-arg OPENFIRE_USER=${{ secrets.OPENFIRE_USER }} \
+                       --build-arg OPENFIRE_PASSWORD=${{ secrets.OPENFIRE_PASSWORD }} \
+                       -t ajustadoati/websocket-service:latest .
+
+      # 5. Publica la imagen en Docker Hub
+      - name: Push Docker Image
+        run: |
+          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          docker push ajustadoati/websocket-service:latest
+
+      # 6. Despliega en el servidor automáticamente
+      - name: Configurar clave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ajustadoati.com >> ~/.ssh/known_hosts
+
+      - name: Probar conexión SSH
+        run: |
+          ssh -o StrictHostKeyChecking=no ajustado@ajustadoati.com "echo 'Conexión SSH exitosa'"
+
+      - name: Deploy Application
+        run: |
+          ssh -o StrictHostKeyChecking=no ajustado@ajustadoati.com << 'EOF'
+            docker pull ajustadoati/websocket-service:latest
+            docker stop app-websocket || true
+            docker rm app-websocket || true
+            docker run -d --name app-websocket \
+              -p 8080:8080 \
+              -e OPENFIRE_USER="${{ secrets.OPENFIRE_USER }}" \
+              -e OPENFIRE_PASSWORD="${{ secrets.OPENFIRE_PASSWORD }}" \
+              -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
+              ajustadoati/app-websocket:latest
+          EOF

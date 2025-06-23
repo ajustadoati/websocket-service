@@ -49,7 +49,6 @@ public class WebsocketService extends TextWebSocketHandler {
         super.afterConnectionClosed(session, status);
         log.info("Closing current session");
         //this.connection.disconnect();
-        openfireService.removeMessage(session);
         openfireService.removeSession(session);
         session.close();
     }

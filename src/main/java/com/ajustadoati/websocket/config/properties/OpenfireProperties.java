@@ -6,7 +6,6 @@ import org.springframework.stereotype.Component;
 
 
 @Data
-@Component
 @ConfigurationProperties("openfire")
 public class OpenfireProperties {
 

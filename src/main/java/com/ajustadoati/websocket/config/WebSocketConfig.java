@@ -1,6 +1,7 @@
 package com.ajustadoati.websocket.config;
 
 import com.ajustadoati.websocket.application.service.WebsocketService;
+import com.ajustadoati.websocket.config.properties.OpenfireProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.*;
