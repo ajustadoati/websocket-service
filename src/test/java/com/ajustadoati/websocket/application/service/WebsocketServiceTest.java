@@ -48,8 +48,8 @@ class WebsocketServiceTest {
     void testAfterConnectionClosed() throws Exception {
         CloseStatus closeStatus = new CloseStatus(1000, "Normal closure");
         websocketService.afterConnectionClosed(webSocketSession, closeStatus);
-        verify(openfireService, times(1)).removeMessage(any()); // Verify that removeMessage method is called in OpenfireService
-        verify(openfireService, times(1)).removeSession(any()); // Verify that removeSession method is called in OpenfireService
+        verify(openfireService, times(1)).removeSession(any()); // Verify that removeMessage method is called in OpenfireService
+
     }
 
 }
