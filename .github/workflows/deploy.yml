@@ -64,5 +64,5 @@ jobs:
               -e OPENFIRE_USER="${{ secrets.OPENFIRE_USER }}" \
               -e OPENFIRE_PASSWORD="${{ secrets.OPENFIRE_PASSWORD }}" \
               -e SECRET_KEY=${{ secrets.SECRET_KEY }} \
-              ajustadoati/app-websocket:latest
+              ajustadoati/websocket-service:latest
           EOF
