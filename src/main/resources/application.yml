@@ -8,6 +8,6 @@ spring:
 openfire:
   domain: ajustadoati.com
   port: 5222
-  user: ${OPENFIRE_USER:xxx}
+  user: ${OPENFIRE_USER:xx}
   password: ${OPENFIRE_PASSWORD:xxx.}
 

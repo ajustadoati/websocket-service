@@ -10,24 +10,18 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jivesoftware.smack.*;
 import org.jivesoftware.smack.chat2.Chat;
-import org.jivesoftware.smack.chat2.ChatManager;
-import org.jivesoftware.smack.chat2.IncomingChatMessageListener;
 import org.jivesoftware.smack.packet.Message;
-import org.jivesoftware.smack.tcp.XMPPTCPConnection;
-import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration;
 import org.jxmpp.jid.EntityBareJid;
 import org.jxmpp.jid.impl.JidCreate;
 import org.jxmpp.stringprep.XmppStringprepException;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.io.IOException;
-import java.util.ArrayList;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.logging.Logger;
 
 @Data
 @RequiredArgsConstructor
@@ -38,40 +32,56 @@ public class OpenfireService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final List<WebSocketSession> sessions = new CopyOnWriteArrayList<>();
     private final List<MessageWS> messages = new CopyOnWriteArrayList<>();
+    private final ProviderService providerService;
 
     @PostConstruct
     public void init() {
-        connectionManager.getChatManager().addIncomingListener(this::handleIncomingMessage);
+        connectionManager.getChatManager()
+            .addIncomingListener(this::handleIncomingMessage);
     }
 
     public void processMessage(MessageWS messageWS) {
         messages.add(messageWS);
         sessions.add(messageWS.getSession());
+        messageWS.getUsers()
+            .stream()
+            .map(String::trim)
+            .filter(user -> !user.isEmpty())
+            .forEach(user -> {
+                try {
+                    try {
+                        sendMessageToUser(messageWS, user);
+                    } catch (SmackException.NotConnectedException | InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                } catch (XmppStringprepException e) {
+                    log.error("Error processing user {}", user, e);
+                }
+            });
+    }
 
-        var users = messageWS.getUsers().split("&&");
+    private void sendMessageToUser(MessageWS messageWS, String user)
+        throws XmppStringprepException, SmackException.NotConnectedException, InterruptedException {
+        log.info("Sending message to user: {} {}", user, messageWS);
+        EntityBareJid jid = JidCreate.entityBareFrom(user + "@ajustadoati.com");
+        Chat chat = connectionManager.getChatManager()
+            .chatWith(jid);
+        String gmapsUrl = String.format("https://www.google.com/maps?q=%s,%s",
+            messageWS.getLatitude(), messageWS.getLongitude());
 
-        for (String user : users) {
-            try {
-                var fullJid = JidCreate.entityBareFrom(user + "@ajustadoati.com");
-                var chat = connectionManager.getChatManager().chatWith(fullJid);
-                var outMessage = new Message();
-                outMessage.setBody(String.join("---",
-                    messageWS.getId().toString(),
-                    messageWS.getMessage(),
-                    String.valueOf(messageWS.getLatitude()),
-                    String.valueOf(messageWS.getLongitude())));
-                chat.send(outMessage);
-
-            } catch (Exception e) {
-                log.error("Error sending message to user {}", user, e);
-            }
-        }
+        String outBody = String.join("\n",
+            "Id:" + messageWS.getId(),
+            "Sol:" + messageWS.getMessage(),
+            "Loc:" + gmapsUrl);
+        var outMessage = new Message();
+        outMessage.setBody(outBody);
+        chat.send(outMessage);
     }
 
     private void handleIncomingMessage(EntityBareJid from, Message message, Chat chat) {
         log.info("Received message from {}: {}", from, message.getBody());
 
-        String[] parts = message.getBody().split("&&");
+        String[] parts = message.getBody().split("::");
         if (parts.length < 2) return;
 
         Long id = Long.parseLong(parts[0]);
@@ -82,9 +92,18 @@ public class OpenfireService {
         ResponseDto response = ResponseDto.builder()
             .user(username)
             .message(content)
-            .latitude(0.0)
-            .longitude(0.0)
             .build();
+
+        var provider = providerService.findByUsername(username)
+            .block();
+
+        if (provider != null) {
+            response.setLatitude(provider.getLocations().get(0).getLatitude());
+            response.setLongitude(provider.getLocations().get(0).getLongitude());
+        }else{
+            response.setLatitude(BigDecimal.ZERO);
+            response.setLongitude(BigDecimal.ZERO);
+        }
 
         try {
             String json = objectMapper.writeValueAsString(response);
@@ -99,12 +118,14 @@ public class OpenfireService {
 
     public void removeSession(WebSocketSession session) {
         sessions.remove(session);
-        messages.removeIf(m -> m.getSession().equals(session));
+        messages.removeIf(m -> m.getSession()
+            .equals(session));
     }
 
     private WebSocketSession getSessionById(Long id) {
         return messages.stream()
-            .filter(m -> m.getId().equals(id))
+            .filter(m -> m.getId()
+                .equals(id))
             .map(MessageWS::getSession)
             .findFirst()
             .orElse(null);

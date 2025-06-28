@@ -1,6 +1,7 @@
 package com.ajustadoati.websocket.config;
 
 import com.ajustadoati.websocket.config.properties.OpenfireProperties;
+import jakarta.annotation.PostConstruct;
 import org.jivesoftware.smack.AbstractXMPPConnection;
 import org.jivesoftware.smack.ConnectionConfiguration;
 import org.jivesoftware.smack.SASLAuthentication;
